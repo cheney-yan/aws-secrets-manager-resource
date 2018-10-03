@@ -1,0 +1,111 @@
+Description: >
+  This template demonstrates the AWS Secrets Manager CloudFormation ingtegration
+Parameters:
+    CustomSecret:
+      Description: A custom Secret
+      Type: String
+      NoEcho: true
+
+Resources:
+  SecretsmanagerKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: SecretsManager secrets KMS Key
+      Enabled: 'true'
+      EnableKeyRotation: 'true'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Allow administration of the key
+          Effect: Allow
+          Principal:
+            AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+          Action: ['kms:*']
+          Resource: '*'
+        - Sid: Allow secrets handler handler use of the key
+          Effect: Allow
+          Principal:
+            AWS:
+            # add the list of trusted user here. Note the secretsmanger handler lambda must be trusted.
+              - arn:aws:iam::570761704186:role/secretsmanager-handler-prod-ap-southeast-2-lambdaRole
+              - arn:aws:iam::570761704186:role/ml-reco-batch
+              - arn:aws:iam::570761704186:user/arthur.deygin
+          Action: ['kms:Encrypt', 'kms:Decrypt', 'kms:ReEncrypt*', 'kms:GenerateDataKey*', 'kms:DescribeKey']
+          Resource: '*'
+  SecretsmanagerKMSAlias:
+    Type: "AWS::KMS::Alias"
+    Properties:
+      AliasName: !Sub "alias/${AWS::StackName}KMSKey"
+      TargetKeyId: !Ref SecretsmanagerKMSKey
+# Custom Resource that retrieves and returns the password for an exisitng Secret
+# The SecretName must exist in AWS Secrets Manager
+  # GetAWSSecret:
+  #   Type: AWS::CloudFormation::CustomResource
+  #   Properties:
+  #     ServiceToken: arn:aws:lambda:ap-southeast-2:570761704186:function:secretsmanager-handler-prod-secret
+  #     SecretAction: get
+  #     SecretName: PostgresDBAdmin
+  #     Region: ap-southeast-2
+  #     LogLevel: DEBUG
+
+# Custom Resource that stores a Secret of your choosing
+# Uses the password provided by the `DatabasePassword` Parameter
+  StoreAWSSecret1:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: arn:aws:lambda:ap-southeast-2:570761704186:function:secretsmanager-handler-prod-secret
+      SecretAction: upsert
+      SecretName: !Sub "${AWS::StackName}-UserNamePasswordType"
+      # This is equivalent to '{"UserName":"postgresAdmin","Password":!Ref CustomSecret}'
+      SecretUsername: username
+      SecretPassword: !Ref CustomSecret
+      KMSAlias: !Ref SecretsmanagerKMSAlias
+      LogLevel: DEBUG
+      SecretDescription: Customised password
+      Region: ap-southeast-2
+
+#   StoreAWSSecret2:
+#     Type: AWS::CloudFormation::CustomResource
+#     Properties:
+#       ServiceToken: arn:aws:lambda:ap-southeast-2:570761704186:function:secretsmanager-handler-prod-secret
+#       SecretAction: upsert
+#       SecretName: !Sub "alias/${AWS::StackName}-PlainTextType"
+#       KMSAlias: !Ref SecretsmanagerKMSAlias
+#       SecretPlaintext: !Ref CustomSecret
+#       LogLevel: DEBUG
+#       SecretDescription: Customised Plain text
+#       Region: ap-southeast-2
+
+# # Custom Resource that generates and returns a random password and stores the Secret
+#   GenerateAWSSecret3:
+#     Type: AWS::CloudFormation::CustomResource
+#     Properties:
+#       ServiceToken: arn:aws:lambda:ap-southeast-2:570761704186:function:secretsmanager-handler-prod-secret
+#       SecretAction: upsert
+#       SecretName: !Sub "alias/${AWS::StackName}-RandomGeneraetdPassword"
+#       SecretUsername: username
+#       KMSAlias: !Ref SecretsmanagerKMSAlias
+#       LogLevel: DEBUG
+#       SecretDescription: Admin password - randomly generated
+#       Region: ap-southeast-2
+
+# # Custom Resource that generates and returns a random password and stores the Secret
+#   GenerateAWSSecret4:
+#     Type: AWS::CloudFormation::CustomResource
+#     Properties:
+#       ServiceToken: arn:aws:lambda:ap-southeast-2:570761704186:function:secretsmanager-handler-prod-secret
+#       SecretAction: upsert
+#       SecretName: !Sub "alias/${AWS::StackName}-RandomGeneraetdPlainText"
+#       KMSAlias: !Ref SecretsmanagerKMSAlias
+#       LogLevel: DEBUG
+#       SecretDescription: Randomly generated plain text secret
+#       Region: ap-southeast-2
+Outputs:
+# Outputs are for tesing purposes only!!!
+# NEVER output your Secrets in a real world implementation!!!
+  # RetrievedSecret:
+  #   Description: The secret we retrieved from Secrets Manager
+  #   Value: !GetAtt GetAWSSecret.SecretPassword
+  KmsKey:
+    Description: The secrets that is used to protect the keys
+    Value: !Ref SecretsmanagerKMSAlias
